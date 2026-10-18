@@ -191,6 +191,21 @@ printf '#!/usr/bin/env bash\nsource "$(dirname "$0")/../lib/near.sh"  # trailing
 fp="$("$TRUST" "$L" --fingerprint 2>"$TMP/fp2.err")"
 check "\$(dirname \$0) sources are followed recursively" 'grep -q "lib/near.sh$" <<<"$fp" && grep -q "lib/sub/inner.sh$" <<<"$fp"'
 check "a project script run by an interpreter is UNRESOLVED" 'grep -q "UNRESOLVED: verify.sh: runs tools/report.py" "$TMP/fp2.err"'
+cat > "$L/scripts/verify.sh" <<'VEOF'
+#!/usr/bin/env bash
+# usage: ./scripts/verify.sh --json      (a comment: ignored)
+find /tmp -name x -exec true {} +
+true && source "$L2/lib/y.sh"
+eval "$CMD"
+"$ROOT/bin/run" --json
+./tools/check.sh
+VEOF
+"$TRUST" "$L" --fingerprint 2>"$TMP/fp3.err" >/dev/null
+check "eval, exec-free find, mid-line source and path commands are classified" '[[ "$(grep -c "^UNCLASSIFIED" "$TMP/fp3.err")" == 4 ]] && ! grep -q "line 2:" "$TMP/fp3.err" && ! grep -q "line 3:" "$TMP/fp3.err"'
+env -u CLAUDECODE "$TRUST" "$L" </dev/null >/dev/null 2>"$TMP/uc.err"; rc=$?
+check "unclassified code blocks approval" '[[ $rc -eq 4 ]] && grep -q "cannot follow" "$TMP/uc.err"'
+CLAUDECODE=1 "$TRUST" "$L" --accept-unclassified </dev/null >/dev/null 2>"$TMP/uc2.err"; rc=$?
+check "--accept-unclassified only lifts that block (the person check still applies)" '[[ $rc -eq 3 ]]'
 check "a symlinked GOV_PROJECTS_ROOT still matches" '[[ -n "$(GOV_PROJECTS_ROOT="$TMP/rootlink" verify "$PROJ" sl)" ]]'
 
 echo "$pass passed, $fail failed"

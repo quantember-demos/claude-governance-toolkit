@@ -2,7 +2,8 @@
 # verify-trust.sh — approve (or revoke) a project's verifier for the
 # verify-effective-state.sh Stop hook.
 #
-#   verify-trust.sh <project-dir> [--also FILE ...]   review the verifier, then approve it
+#   verify-trust.sh <project-dir> [--also FILE ...] [--accept-unclassified]
+#                                                     review the verifier, then approve it
 #   verify-trust.sh <project-dir> --revoke            remove the approval
 #   verify-trust.sh <project-dir> --fingerprint       print what approval would pin (read-only):
 #                                                     line 1 fingerprint, line 2 verifier, then each pinned file
@@ -13,7 +14,11 @@
 #   - anything else (a variable like "$ROOT/lib/x.sh", a relative path, a
 #     project script run by bash/python/...) blocks approval until you pin the
 #     file it loads with --also. A --also file whose path ends with the
-#     reference's tail (e.g. lib/x.sh) covers that reference.
+#     reference's tail (e.g. lib/x.sh) covers that reference;
+#   - code the scanner cannot classify (eval, exec, source after ; or &&, a
+#     command run by path such as ./x or "$ROOT/bin/x") also blocks approval,
+#     unless --accept-unclassified is given after reading it.
+# Static scanning of shell is best-effort: keep verifiers simple.
 # The hook re-hashes the pinned set every turn; any change stops the verifier
 # until it is approved again.
 #
@@ -30,9 +35,11 @@ shift
 project="$(cd "$project" && pwd -P)"
 mode=""
 also=()
+accept_unclassified=0
 while (( $# )); do
   case "$1" in
     --revoke|--fingerprint) mode="$1"; shift ;;
+    --accept-unclassified) accept_unclassified=1; shift ;;
     --also) [[ $# -ge 2 ]] || { echo "--also needs a file" >&2; exit 2; }
             [[ -f $2 ]] || { echo "--also: no such file: $2" >&2; exit 2; }
             also+=("$(cd "$(dirname "$2")" && pwd -P)/$(basename "$2")"); shift 2 ;;
@@ -52,6 +59,7 @@ list_file="$trust_file.d/$(printf '%s' "$verifier" | sha256sum | cut -c1-32).fil
 
 seen=()
 unresolved=()
+unclassified=()
 in_project() { case "$1" in "$project"/*) return 0 ;; esac; return 1; }
 canon() { printf '%s/%s' "$(cd "$(dirname "$1")" && pwd -P)" "$(basename "$1")"; }
 covered_by_also() {  # does a --also file end with this reference's tail?
@@ -73,6 +81,15 @@ run_refs() {
   grep -oE '(^|[;&|(`[:space:]])(bash|sh|zsh|python3?|perl|ruby|node)[[:space:]]+[^-;&|#[:space:]][^;&|#[:space:]]*' "$1" \
     | sed -E 's/^.*(bash|sh|zsh|python3?|perl|ruby|node)[[:space:]]+//; s/["'\'']//g' \
     | grep -E '/|\.(sh|py|pl|rb|js)$' || true
+}
+
+# Lines that load or run code in ways this scanner cannot follow. Comment lines
+# are ignored; "-exec" (a find option) is not exec.
+unclassified_refs() {
+  # shellcheck disable=SC2016  # a literal regex, not expansions
+  sed -E 's/^[[:space:]]*#.*$//' "$1" | grep -nE \
+    '(^|[;&|(`]|\b(then|do|else))[[:space:]]*(eval|exec)([[:space:]]|$)|(^|[;&|(`]|\b(then|do|else))[[:space:]]*"?(\./|\.\./|\$\(dirname|\$\{BASH_SOURCE|\$\{?[A-Za-z_][A-Za-z_0-9]*\}?/)|[;&|][[:space:]]*(source|\.)[[:space:]]' \
+    | sed -E 's/[[:space:]]+/ /g' | cut -c1-100 || true
 }
 
 # Follow the files a script loads, recursively. Exact references are pinned;
@@ -100,6 +117,10 @@ deps_of() {
     [[ -n $ref ]] || continue
     covered_by_also "$ref" || unresolved+=("$(basename "$file"): runs $ref")
   done < <(run_refs "$file")
+  while IFS= read -r ref; do
+    [[ -n $ref ]] || continue
+    unclassified+=("$(basename "$file") line $ref")
+  done < <(unclassified_refs "$file")
 }
 
 drop() {
@@ -131,7 +152,15 @@ if [[ $mode == --fingerprint ]]; then
   echo "$verifier"
   printf '%s\n' "${files[@]}"
   for u in "${unresolved[@]+"${unresolved[@]}"}"; do echo "UNRESOLVED: $u" >&2; done
+  for u in "${unclassified[@]+"${unclassified[@]}"}"; do echo "UNCLASSIFIED: $u" >&2; done
   exit 0
+fi
+
+if (( ${#unclassified[@]} )) && (( ! accept_unclassified )); then
+  echo "verify-trust.sh: approval refused: code the scanner cannot follow, so approval could not pin what it loads:" >&2
+  printf '  %s\n' "${unclassified[@]}" >&2
+  echo "Simplify the verifier, or read these lines and pass --accept-unclassified." >&2
+  exit 4
 fi
 
 if (( ${#unresolved[@]} )); then
@@ -165,6 +194,11 @@ fi
   echo "Verifier: $verifier"
   echo "Runs at the end of every Claude Code turn in this project${GOV_VERIFY_SUDO:+, AS ROOT (GOV_VERIFY_SUDO is set)}."
   echo
+  if (( ${#unclassified[@]} )); then
+    echo "ACCEPTED WITHOUT PINNING (--accept-unclassified): what these lines load is not covered:"
+    printf '  %s\n' "${unclassified[@]}"
+    echo
+  fi
   echo "Approval pins these ${#files[@]} file(s); a change to any of them needs approval again:"
   for f in "${files[@]}"; do echo "  $f ($(wc -l < "$f") lines)"; done
   echo

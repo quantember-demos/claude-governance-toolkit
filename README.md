@@ -72,6 +72,7 @@ Approval reads your answer from the terminal (`/dev/tty`) and refuses to run ins
 **What approval covers.**
 - **Scope:** the verifier and every file it `source`s, followed recursively, shown in full for review (control characters displayed, never interpreted). A change to any pinned file stops the verifier until you approve it again.
 - **Fails closed.** Only exact sources are followed: absolute paths, or paths relative to `$(dirname "$0")` or `$(dirname "${BASH_SOURCE[0]}")`. A source through another variable (`"$ROOT/lib/x.sh"`), or a project script run by `bash`, `python` and the like, blocks approval until you pin the file with `--also FILE`. A `--also` file whose path ends with the reference's tail covers it, and its own sources are followed too.
+- **What the scanner cannot follow also blocks approval:** `eval`, `exec`, a `source` after `;` or `&&`, or a command run by path (`./x`, `"$ROOT/bin/x"`). Simplify the verifier, or read those lines and pass `--accept-unclassified`. Static scanning of shell is best-effort, so keep verifiers simple.
 - **Revoking:** `--revoke` removes an approval; `--fingerprint` shows what would be pinned without approving anything.
 
 **What it is not.** Approval stops Claude from being talked into running unreviewed code. It is not a boundary against other software already running as you, which could edit the trust file directly.
