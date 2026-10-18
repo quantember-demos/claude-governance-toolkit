@@ -57,6 +57,10 @@ done
 trust_file="${GOV_VERIFY_TRUST:-${XDG_CONFIG_HOME:-$HOME/.config}/claude-governance/verify-trusted}"
 list_file="$trust_file.d/$(printf '%s' "$verifier" | sha256sum | cut -c1-32).files"
 
+# Text from the project (paths, flagged lines) is shown with control
+# characters made visible (^[ ...), so escape codes cannot rewrite the screen
+safe() { cat -v; }
+
 seen=()
 unresolved=()
 unclassified=()
@@ -151,21 +155,21 @@ if [[ $mode == --fingerprint ]]; then
   echo "$hash"
   echo "$verifier"
   printf '%s\n' "${files[@]}"
-  for u in "${unresolved[@]+"${unresolved[@]}"}"; do echo "UNRESOLVED: $u" >&2; done
-  for u in "${unclassified[@]+"${unclassified[@]}"}"; do echo "UNCLASSIFIED: $u" >&2; done
+  { for u in "${unresolved[@]+"${unresolved[@]}"}"; do echo "UNRESOLVED: $u"; done
+    for u in "${unclassified[@]+"${unclassified[@]}"}"; do echo "UNCLASSIFIED: $u"; done; } | safe >&2
   exit 0
 fi
 
 if (( ${#unclassified[@]} )) && (( ! accept_unclassified )); then
   echo "verify-trust.sh: approval refused: code the scanner cannot follow, so approval could not pin what it loads:" >&2
-  printf '  %s\n' "${unclassified[@]}" >&2
+  printf '  %s\n' "${unclassified[@]}" | safe >&2
   echo "Simplify the verifier, or read these lines and pass --accept-unclassified." >&2
   exit 4
 fi
 
 if (( ${#unresolved[@]} )); then
   echo "verify-trust.sh: approval refused: the verifier loads code that is not pinned:" >&2
-  printf '  %s\n' "${unresolved[@]}" >&2
+  printf '  %s\n' "${unresolved[@]}" | safe >&2
   echo "Pin each file it loads with --also FILE, then run this again." >&2
   exit 4
 fi
@@ -202,7 +206,7 @@ fi
   echo "Approval pins these ${#files[@]} file(s); a change to any of them needs approval again:"
   for f in "${files[@]}"; do echo "  $f ($(wc -l < "$f") lines)"; done
   echo
-} > /dev/tty
+} | safe > /dev/tty
 # Every pinned file in full. Control characters are shown, never interpreted:
 # a file could otherwise use terminal escapes to hide what it really contains.
 # less -U shows them as ^X; LESSOPEN/LESSCLOSE are cleared so no preprocessor runs.

@@ -202,6 +202,9 @@ eval "$CMD"
 VEOF
 "$TRUST" "$L" --fingerprint 2>"$TMP/fp3.err" >/dev/null
 check "eval, exec-free find, mid-line source and path commands are classified" '[[ "$(grep -c "^UNCLASSIFIED" "$TMP/fp3.err")" == 4 ]] && ! grep -q "line 2:" "$TMP/fp3.err" && ! grep -q "line 3:" "$TMP/fp3.err"'
+printf 'eval "$X" # \033[2K\033[1Ahidden\n' >> "$L/scripts/verify.sh"
+"$TRUST" "$L" --fingerprint 2>"$TMP/esc.err" >/dev/null
+check "escape codes from the project are shown, not sent to the terminal" '! grep -q $'"'"'\033'"'"' "$TMP/esc.err" && grep -qF "^[[2K" "$TMP/esc.err"'
 env -u CLAUDECODE "$TRUST" "$L" </dev/null >/dev/null 2>"$TMP/uc.err"; rc=$?
 check "unclassified code blocks approval" '[[ $rc -eq 4 ]] && grep -q "cannot follow" "$TMP/uc.err"'
 CLAUDECODE=1 "$TRUST" "$L" --accept-unclassified </dev/null >/dev/null 2>"$TMP/uc2.err"; rc=$?
