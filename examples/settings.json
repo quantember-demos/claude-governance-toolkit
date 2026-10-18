@@ -1,0 +1,22 @@
+{
+  "env": {
+    "GOV_PROJECTS_ROOT": "/home/you/Projects"
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          { "type": "command", "command": "~/.claude/governance-toolkit/hooks/session-memory-surface.sh" }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "~/.claude/governance-toolkit/hooks/session-memory-scaffold.sh" },
+          { "type": "command", "command": "~/.claude/governance-toolkit/hooks/verify-effective-state.sh" }
+        ]
+      }
+    ]
+  }
+}

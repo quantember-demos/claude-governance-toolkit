@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/quantember-demos/claude-governance-toolkit/schema/session-memory.schema.json",
+  "title": "session-memory.json",
+  "description": "Per-project record of what Claude Code sessions learned. Written by hooks/session-memory-scaffold.sh (structure) and by Claude (content).",
+  "type": "object",
+  "required": ["schema_version", "project", "sessions"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "project": { "type": "string", "description": "Project directory name" },
+    "tier": { "type": "string", "description": "Optional tier from a project registry; empty when none" },
+    "created": { "type": "string", "format": "date-time" },
+    "sessions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["session_id", "enriched", "insights", "troubleshooting", "user_interactions", "optimization_candidates"],
+        "properties": {
+          "session_id": { "type": "string" },
+          "date": { "type": "string", "format": "date" },
+          "started": { "type": "string", "format": "date-time" },
+          "ended": { "type": "string", "format": "date-time", "description": "Refreshed by the Stop hook every turn" },
+          "enriched": { "type": "boolean", "description": "True once Claude has written anything; not a mark of completeness" },
+          "summary": { "type": "string", "description": "One line: what the session did" },
+          "insights": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["text"],
+              "properties": {
+                "text": { "type": "string" },
+                "tags": { "type": "array", "items": { "type": "string" } },
+                "confidence": { "enum": ["high", "med", "low"] }
+              }
+            }
+          },
+          "troubleshooting": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["symptom", "taxonomy"],
+              "properties": {
+                "symptom": { "type": "string" },
+                "taxonomy": { "enum": ["env", "crypto", "script", "data", "assumption", "scope", "cost"] },
+                "ref": { "type": "string", "description": "Pointer into feedback.md (e.g. feedback.md#2026-10-17); never a copy of the entry" }
+              }
+            }
+          },
+          "user_interactions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["type", "note"],
+              "properties": {
+                "type": { "enum": ["preference", "correction", "approval", "rejection"] },
+                "scope": { "enum": ["global", "project"] },
+                "note": { "type": "string" }
+              }
+            }
+          },
+          "optimization_candidates": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["target", "proposal", "status"],
+              "properties": {
+                "target": { "type": "string", "description": "A CLAUDE.md path, or 'environment'" },
+                "proposal": { "type": "string" },
+                "rationale": { "type": "string" },
+                "status": { "enum": ["proposed", "applied", "rejected"] }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
